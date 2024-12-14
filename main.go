@@ -9,9 +9,22 @@ import (
 )
 
 var ctx, cancel = context.WithTimeout(context.TODO(), time.Minute)
-var shouldStop = false
 var solutions = make(chan [9][9]int, 1000)
 
+const extraConstraint = true
+
+/*
+ * Represents a position on the field
+ */
+
+type Position struct {
+	x int
+	y int
+}
+
+/*
+ * Pretty printing for the Sudoku field
+ */
 func printField(feld [9][9]int) {
 	fmt.Println("┌───────┬───────┬───────┐")
 	for i, zeile := range feld {
@@ -32,11 +45,9 @@ func printField(feld [9][9]int) {
 	fmt.Println("└───────┴───────┴───────┘")
 }
 
-type Position struct {
-	x int
-	y int
-}
-
+/*
+ * Figures out the next free space in the Sudoku field (could be done by counting explicitly but the cost in a 9x9 grid is negligible
+ */
 func findNextFree(feld [9][9]int) (Position, bool) {
 	for y, zeile := range feld {
 		for x, v := range zeile {
@@ -49,6 +60,9 @@ func findNextFree(feld [9][9]int) (Position, bool) {
 	return Position{}, true
 }
 
+/*
+* Functional helper function (pun intended) for filtering lists because i was lazy :D
+ */
 func filter(l []int, x int) []int {
 	var entries = []int{}
 	for _, e := range l {
@@ -67,14 +81,19 @@ func Abs(x int) int {
 	}
 }
 
-// Returns true if remove
-func checkNeighbor(nval int, val int) bool {
+/*
+* Checks if the passed numbers have a distance of 2
+ */
+func differenceSmaller2(nval int, val int) bool {
 	if nval != 0 && Abs(nval-val) < 2 {
 		return true
 	}
 	return false
 }
 
+/*
+* Figures out all possible entries for the given position and returns a list
+ */
 func getValidEntries(feld [9][9]int, p Position) []int {
 	var contains = []int{}
 
@@ -109,93 +128,96 @@ func getValidEntries(feld [9][9]int, p Position) []int {
 		entries = filter(entries, int(x))
 	}
 
-	var toRemove = []int{}
+	// Checks if the neighboring fields have a difference of 2 or greater
+	if extraConstraint {
+		var toRemove = []int{}
 
-	for _, v := range entries {
-		// Links
-		if p.x-1 >= 0 {
-			if checkNeighbor(feld[p.y][p.x-1], v) {
-				toRemove = append(toRemove, v)
+		for _, v := range entries {
+			// Links
+			if p.x-1 >= 0 {
+				if differenceSmaller2(feld[p.y][p.x-1], v) {
+					toRemove = append(toRemove, v)
+				}
+			}
+
+			// Rechts
+			if p.x+1 <= 8 {
+				if differenceSmaller2(feld[p.y][p.x+1], v) {
+					toRemove = append(toRemove, v)
+				}
+			}
+
+			// Oben
+			if p.y-1 >= 0 {
+				if differenceSmaller2(feld[p.y-1][p.x], v) {
+					toRemove = append(toRemove, v)
+				}
+			}
+
+			// Unten
+			if p.y+1 <= 8 {
+				if differenceSmaller2(feld[p.y+1][p.x], v) {
+					toRemove = append(toRemove, v)
+				}
 			}
 		}
-
-		// Rechts
-		if p.x+1 <= 8 {
-			if checkNeighbor(feld[p.y][p.x+1], v) {
-				toRemove = append(toRemove, v)
-			}
+		for _, x := range toRemove {
+			entries = filter(entries, x)
 		}
-
-		// Oben
-		if p.y-1 >= 0 {
-			if checkNeighbor(feld[p.y-1][p.x], v) {
-				toRemove = append(toRemove, v)
-			}
-		}
-
-		// Unten
-		if p.y+1 <= 8 {
-			if checkNeighbor(feld[p.y+1][p.x], v) {
-				toRemove = append(toRemove, v)
-			}
-		}
-	}
-	for _, x := range toRemove {
-		entries = filter(entries, x)
 	}
 
 	return entries
 }
 
+/*
+* Places the next possible value in the field and recurses over the steps
+ */
 func tryNextStep(feld [9][9]int) {
 	p, done := findNextFree(feld)
 	if done {
-		// if feld[0][5] == 7 && feld[1][4] == 1 && feld[2][3] == 2 {
 		if validSolution(feld) {
 			solutions <- feld
 		}
-		// }
 		return
 	}
 
 	tryEntries := getValidEntries(feld, p)
 	for _, t := range tryEntries {
 		feld[p.y][p.x] = t
-		// printField(feld)
-		if shouldStop {
-			return
-		}
 		go tryNextStep(feld)
 	}
 }
 
+/*
+* Validates the neighbor constraint for the whole field
+ */
 func validSolution(feld [9][9]int) bool {
 	for y := range 9 {
 		for x := range 9 {
 			// Links
 			if x-1 >= 0 {
-				if checkNeighbor(feld[y][x-1], feld[y][x]) {
+				if differenceSmaller2(feld[y][x-1], feld[y][x]) {
 					return false
 				}
 			}
 
 			// Rechts
 			if x+1 <= 8 {
-				if checkNeighbor(feld[y][x+1], feld[y][x]) {
+				if differenceSmaller2(feld[y][x+1], feld[y][x]) {
 					return false
 				}
 			}
 
 			// Oben
 			if y-1 >= 0 {
-				if checkNeighbor(feld[y-1][x], feld[y][x]) {
+				if differenceSmaller2(feld[y-1][x], feld[y][x]) {
 					return false
 				}
 			}
 
 			// Unten
 			if y+1 <= 8 {
-				if checkNeighbor(feld[y+1][x], feld[y][x]) {
+				if differenceSmaller2(feld[y+1][x], feld[y][x]) {
 					return false
 				}
 			}
@@ -231,6 +253,7 @@ func main() {
 
 	go tryNextStep(feld)
 
+	start := time.Now()
 	go func() {
 		for {
 			if runtime.NumGoroutine() < 3 {
@@ -250,5 +273,7 @@ END:
 		}
 	}
 	cancel()
-	shouldStop = true
+	end := time.Now()
+	fmt.Println("It took us", end.Sub(start), "to find a solution")
+	fmt.Println("🎄 Happy Christmas Time! 🎄")
 }

@@ -170,7 +170,7 @@ func getValidEntries(feld [9][9]int, p Position) []int {
 }
 
 /*
-* Places the next possible value in the field and recurses over the steps
+ * Places the next possible value in the field and recurses over the steps
  */
 func tryNextStep(feld [9][9]int) {
 	p, done := findNextFree(feld)
@@ -184,7 +184,7 @@ func tryNextStep(feld [9][9]int) {
 	tryEntries := getValidEntries(feld, p)
 	for _, t := range tryEntries {
 		feld[p.y][p.x] = t
-		go tryNextStep(feld)
+		tryNextStep(feld) // Parallel is only useful for finding all solutions without extra constraints (basically generating new fields)
 	}
 }
 
